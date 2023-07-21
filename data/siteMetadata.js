@@ -12,7 +12,7 @@ const siteMetadata = {
   siteRepo: 'https://github.com/goodStudyTnT/goodstudytnt.com',
   siteLogo: '/static/images/avatar.jpg',
   image: '/static/images/avatar.jpg',
-//   socialBanner: '/static/images/twitter-card.png',
+  socialBanner: '/static/images/twitter-card.png',
   email: 'goodstudyqaq@gmail.com',
   github: 'https://github.com/goodStudyTnT',
 //   twitter: 'https://twitter.com/Twitter',
