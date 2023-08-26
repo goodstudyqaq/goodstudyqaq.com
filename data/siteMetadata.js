@@ -14,7 +14,7 @@ const siteMetadata = {
   image: '/static/images/avatar.jpg',
   socialBanner: '/static/images/avatar.jpg',
   email: 'goodstudyqaq@gmail.com',
-  github: 'https://github.com/goodStudyTnT',
+  github: 'https://github.com/goodStudyqaq',
 //   twitter: 'https://twitter.com/Twitter',
 //   facebook: 'https://facebook.com',
 //   youtube: 'https://youtube.com',
