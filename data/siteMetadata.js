@@ -9,7 +9,7 @@ const siteMetadata = {
   language: 'en-us',
   theme: 'system', // system, dark or light
   siteUrl: 'https://www.goodstudyqaq.com/',
-  siteRepo: 'https://github.com/goodstudyqaq/goodstudytnt.com',
+  siteRepo: 'https://github.com/goodstudyqaq/goodstudyqaq.com',
   siteLogo: '/static/images/avatar.jpg',
   image: '/static/images/avatar.jpg',
   socialBanner: '/static/images/avatar.jpg',
