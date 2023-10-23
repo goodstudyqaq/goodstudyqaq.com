@@ -1,0 +1,177 @@
+---
+title: Leetcode Weekly Contest 368
+date: '2023-10-23'
+tags: ['contest', 'leetcode']
+draft: false
+summary: Leetcode Weekly Contest 368 Solution
+---
+
+# Q1 And Q2
+There are several times Leetcode Weekly Contest has problems that have the same name and the difference between these two problems must be the data size. So we can just read Q2 and try to figure it out in the contest.
+It is easy to think to enumerate `j` and find the smallest one on the left and right of `j`. So now we just need to find a way to get the smallest value on the left and right based on the index. We can use two arrays to maintain the smallest value when traversing from front to back once, and from back to front once.
+
+```cpp
+class Solution {
+   public:
+    int minimumSum(vector<int>& nums) {
+        int n = nums.size();
+        vector<int> mi1(n), mi2(n);
+
+        for (int i = 0; i < n; i++) {
+            mi1[i] = nums[i];
+            if (i - 1 >= 0) {
+                mi1[i] = min(mi1[i - 1], mi1[i]);
+            }
+        }
+
+        for (int i = n - 1; i >= 0; i--) {
+            mi2[i] = nums[i];
+            if (i + 1 < n) {
+                mi2[i] = min(mi2[i], mi2[i + 1]);
+            }
+        }
+
+        int ans = 1e9;
+        for (int i = 1; i < n - 1; i++) {
+            int left = mi1[i - 1], right = mi2[i + 1];
+            if (nums[i] > left && nums[i] > right) {
+                ans = min(ans, left + right + nums[i]);
+            }
+        }
+        if (ans == 1e9) ans = -1;
+        return ans;
+    }
+};
+```
+
+# Q3
+Unfortunately, I didn't figure it out in the contest. It was hard to think of a reasonable solution when in the contest. Below are some thoughts when I was in the contest.
+1. Can I use binary search to get the smallest group number?
+    - If I can and the answer is `ans`, it must satisfy when `group number` $<$ `ans`, it cannot find a solution, and when `group number` $\geq$ `ans`, it always can find a solution. -> How can I prove it? No way!
+    - If the guess is right (maybe? I will pass the problem!). Now we need to find a way to check the plan is the correct when group number is fixed. Does the fixed group number mean we know the number in every group? Yes! 
+    - When we know the number in every group, how can we find a way for a specified frequency number? For example, if one number occurs 23 times, and the number in every group is 3. It has 2 different ways to put it -> 23 = 3 * 5 + 4 * 2 and 23 = 3 * 1 + 4 * 5. We cannot find the only solution. But how can I find a solution for that? I thought it maybe needs some number theory to figure it out...
+
+Gradually, I could not think of a reasonable solution, although I knew it must not be a very hard problem, because there were so many people who passed the problem in the contest...
+
+Okay, it is a brute force, we can traverse the number in every group from small to big, and get the smallest group number. When we fix the number as $val$ in every group. We can put $val + 1$ in groups as much as possible. For example, 23 can be divided into 2 different ways, but the best way is 23 = 3 * 1 + 4 * 5. Because there are 5 groups which have 4, the group number is smaller. In the end, we need to check whether the remaining number after grouping can be turned into $val$. We can write the code to check whether it is right.
+
+```cpp
+bool check(int number, int frequency) {
+    int group_number = (frequency + number + 1 - 1) / (number + 1); // put number + 1 as much as possible.
+    int k = frequency - group_number * number; // Put the number in every group first, and check whether is bigger than the frequency.
+    return k >= 0;
+}
+```
+
+So the AC code is:
+```cpp
+class Solution {
+   public:
+    int minGroupsForValidAssignment(vector<int>& nums) {
+        unordered_map<int, int> M;
+        int n = nums.size();
+        for (int i = 0; i < n; i++) {
+            M[nums[i]]++;
+        }
+        unordered_map<int, int> M2;
+        int mi = 1e9;
+        for (auto it : M) {
+            mi = min(mi, it.second);
+            M2[it.second]++;
+        }
+
+        int ans = 1e9;
+        auto work = [&](int number) {
+            int res = 0;
+            for (auto it : M2) {
+                int frequency = it.first;
+                int cnt = it.second;
+                // val is the min number
+                int group_number = (frequency + number) / (number + 1);
+                int k = frequency - group_number * number;
+                if (k < 0) return -1;
+                res += group_number * cnt;
+            }
+            return res;
+        };
+
+        for (int i = 1; i <= mi; i++) {
+            int res = work(i);
+            if (res != -1) {
+                ans = min(ans, res);
+            }
+        }
+        return ans;
+    }
+};
+```
+
+# Q4
+Q4 also is brute force. Just preprocess the results for each interval, and then do a DP.
+
+```cpp
+const int maxn = 201;
+vector<int> V[maxn];
+void init() {
+    if (V[2].size()) return;
+    for (int i = 1; i < maxn; i++) {
+        for (int j = 2; i * j < maxn; j++) {
+            V[i * j].push_back(i);
+        }
+    }
+}
+
+class Solution {
+   public:
+    int minimumChanges(string s, int k) {
+        init();
+        int n = s.size();
+        auto dp = vect((int)1e9, n, n);
+
+        auto work = [&](int l, int r) {
+            int len = r - l + 1;
+            int mi = len;
+            for (int c : V[len]) {
+                vector<string> V(c);
+                for (int i = l; i <= r; i++) {
+                    V[i % c].push_back(s[i]);
+                }
+                int tmp = 0;
+                for (int i = 0; i < c; i++) {
+                    int n = V[i].size();
+                    for (int j = 0; j < n / 2; j++) {
+                        tmp += (V[i][j] != V[i][n - j - 1]);
+                    }
+                }
+                mi = min(mi, tmp);
+            }
+            return mi;
+        };
+
+        for (int i = 0; i < n; i++) {
+            for (int j = i + 1; j < n; j++) {
+                dp[i][j] = work(i, j);
+            }
+        }
+
+        auto dp2 = vect(-1, n, k + 1);
+
+        function<int(int, int)> dfs = [&](int idx, int k) -> int {
+            if (idx < 0) return 1e9;
+            if (dp2[idx][k] != -1) return dp2[idx][k];
+
+            if (k == 1) {
+                return dp[0][idx];
+            }
+            int res = 1e9;
+            for (int i = 0; i < idx; i++) {
+                res = min(res, dp[i][idx] + dfs(i - 1, k - 1));
+            }
+            return dp2[idx][k] = res;
+        };
+
+        return dfs(n - 1, k);
+    }
+};
+```
+
