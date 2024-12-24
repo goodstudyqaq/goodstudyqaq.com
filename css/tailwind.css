@@ -27,3 +27,11 @@ input:-webkit-autofill,
 input:-webkit-autofill:focus {
   transition: background-color 600000s 0s, color 600000s 0s;
 }
+
+.giscus {
+  @apply w-full max-w-5xl; /* 使用 Tailwind 的宽度和最大宽度工具类 */
+}
+
+.giscus-frame {
+  @apply w-full; /* 确保 iframe 也是全宽 */
+}

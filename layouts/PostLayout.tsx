@@ -57,10 +57,7 @@ export default function PostLayout({ content, authorDetails, children }: LayoutP
                   className="pt-6 pb-6 text-center text-gray-700 dark:text-gray-300"
                   id="comment"
                 >
-                  {!loadComments && (
-                    <button onClick={() => setLoadComments(true)}>Load Comments</button>
-                  )}
-                  {loadComments && <Comments commentsConfig={siteMetadata.comments} slug={slug} />}
+                  <Comments commentsConfig={siteMetadata.comments} slug={slug} />
                 </div>
               )}
             </div>
