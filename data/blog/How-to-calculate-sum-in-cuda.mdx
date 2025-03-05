@@ -1,0 +1,115 @@
+---
+title: How to optimize two for-loops in cuda
+date: '2025-3-5'
+tags: ['cuda']
+draft: false
+summary: Record some tricks in cuda and use these tricks to optimize two for-loops sum
+---
+
+# Problem Description
+Sometimes we need to calculate some pairs values. In our naive way, we maybe write these code:
+```cpp
+for(int i = 0; i < N; i++) {
+    for (int j = 0; j < N; j++) {
+        sum += cal(a[i], b[j]);
+    }
+}
+```
+It's very simple and also there are many methods using cuda to achieve this. Firstly, I will introduce one effective method to achieve this and then I will use some tricks to optimize this method.
+
+# First Version - access `a` in continuous memory
+I want to make threads do much calcuation not one, So in one thread it will calculate N * 1 elements. Let's see the code.
+```cpp
+__global__ void work(size_t N_ITERATIONS, size_t n, const float *a,
+                     const float *b, float *ans) {
+  size_t x = blockDim.x * blockIdx.x + threadIdx.x;
+  size_t y = N_ITERATIONS * blockIdx.y;
+  float sum = 0;
+  for (int i = 0; i < N_ITERATIONS; i++) {
+    float val = (x < n && y + i < n) ? cal(a[x], b[y + i]) : 0;
+    sum += val;
+  }
+  atomicAdd(ans, sum);
+}
+
+```
+In this code, every thread gets one element in `a` and `N_ITERATIONS` elements in `b`, it is continuous when getting element in `a`. That is an advantage of this method. So let's focus on `b`. There is one problem in here. Every thread will access the same elements in `b` so many times. To optimize this, we can use `shared memory` to optimize. This technology is called `Tiling`.
+
+# Second Version - Use `Tiling` to reduce global memory accesses.
+We can load `b` elements in shared memory in the begining of the program. We can make the block size equals to `N_ITERATIONS` so that in every threads, it loads one element in `b`. Let's see the code.
+```cpp
+__global__ void work(size_t N_ITERATIONS, size_t n, const float *a,
+                     const float *b, float *ans) {
+  size_t x = blockDim.x * blockIdx.x + threadIdx.x;
+  size_t y = N_ITERATIONS * blockIdx.y;
+  __shared__ float _b[32];
+  if (y + x % 32 < n) {
+    _b[x % 32] = b[y + x % 32];
+  }
+  float sum = 0;
+  for (int i = 0; i < N_ITERATIONS; i++) {
+    float val = (x < n && y + i < n) ? cal(a[x], _b[i]) : 0;
+    sum += val;
+  }
+  atomicAdd(ans, sum);
+}
+```
+You will notice that the size of `_b` is 32. But in your code, you need to make this size equals to `N_ITERATIONS`.
+
+Every threads load one element in `b`, and it's continuous too. Perfect! But now there is another problem: `Bank conflict`. I am not familiar about `Bank`. In some other blogs, It says when some threads in the same `warp` access the same address in the shared memory, it will occur `Bank conflict`. So how to avoid this? we need to make sure that in every iteration, every threads need to access different val in `_b`. We can interate it diagonally.
+
+![](/static/images/matrix.png)
+
+There is an example, `a~h` are threads. `i~p` are the elements saved in `_b`. The number in the matrix is the order for the thread access the elements. For example, the thread `a` will access `i, p, o, n...j` one by one, and the thread `b` will access `j, i, p, o, n, m...k` one by one. We can notice that, there are not elements that accessed by more than one thread in the same time! What's more, to make all threads in the same warp. We need to make the block size equals to 32 too. Let's see the code:
+```cpp
+__global__ void work(size_t N_ITERATIONS, size_t n, const float *a,
+                     const float *b, float *ans) {
+  size_t x = blockDim.x * blockIdx.x + threadIdx.x;
+  size_t y = N_ITERATIONS * blockIdx.y;
+  __shared__ float _b[32];
+  if (y + x % 32 < n) {
+    _b[x % 32] = b[y + x % 32];
+  }
+  float sum = 0;
+
+  for (int i = 0; i < N_ITERATIONS; i++) {
+    int idx = (32 - i + threadIdx.x) % 32;
+    float val = (x < n && y + idx < n) ? cal(a[x], _b[idx]) : 0;
+    sum += val;
+  }
+  atomicAdd(ans, sum);
+}
+```
+
+# Third Version - Use `Warp shuffle` to decrease the times of `atomicAdd`
+
+Because our block size is 32, we can use `warp shuffle` to add all `sum` into one element to decrease the times of `atomicAdd`.
+`Warp shuffles` are a faster mechanism for moving data between threads in the same warp. Let's see the code:
+```cpp
+__global__ void work(size_t N_ITERATIONS, size_t n, const float *a,
+                     const float *b, float *ans) {
+  size_t x = blockDim.x * blockIdx.x + threadIdx.x;
+  size_t y = N_ITERATIONS * blockIdx.y;
+  __shared__ float _b[32];
+  if (y + x % 32 < n) {
+    _b[x % 32] = b[y + x % 32];
+  }
+  float sum = 0;
+
+  for (int i = 0; i < N_ITERATIONS; i++) {
+    int idx = (32 - i + threadIdx.x) % 32;
+    float val = (x < n && y + idx < n) ? cal(a[x], _b[idx]) : 0;
+    sum += val;
+  }
+
+  for (unsigned w = 16; w >= 1; w /= 2) {
+    sum += __shfl_down_sync(0xffffffff, sum, w);
+  }
+
+  if (threadIdx.x == 0) {
+    atomicAdd(ans, sum);
+  }
+}
+```
+
+That is all. we use `shared memory`, `tiling`, `warp shuffle` to optimize this program and we also focus on the order to access data in memory. Maybe there are more tricks to continue to optimize this program. Let's see in the next time:)
