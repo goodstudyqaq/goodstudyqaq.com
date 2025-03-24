@@ -1,0 +1,199 @@
+---
+title: Modern SQL (CMU Intro to Database Systems)
+date: '2025-3-24'
+tags: ['Database', 'CMU-15445']
+draft: false
+summary: Concepts of database systems
+---
+# Relational Languages
+- Data Manipulation Language (DML): SELECT, INSERT, UPDATE, and DELETE statements
+- Data Definition Language (DDL): Schema definitions for tables, indexes, views, and other objects.
+- Data Control Language (DCL): Security, access controls.
+- It also includes view definition, integrity and referential constraints, and transactions.
+
+Relational algebra is based on sets (unordered, no duplicates). SQL is based on bags (unordered, allows duplicates).
+
+# Aggregates
+An aggregation function takes in a bag of tuples as its input and then produces a single scalar value as its
+output. Aggregate functions can (almost) only be used in a SELECT output list.
+
+- AVG(COL): The average of the values in COL
+- MIN(COL): The minimum value in COL
+- MAX(COL): The maximum value in COL
+- SUM(COL): The sum of the values in COL
+- COUNT(COL): The number of tuples in the relation
+
+The following three queries are equivalent:
+```SQL
+SELECT COUNT(*) FROM student WHERE login LIKE '%@cs';
+
+SELECT COUNT(login) FROM student WHERE login LIKE '%@cs';
+
+SELECT COUNT(1) FROM student WHERE login LIKE '%@cs';
+```
+
+Some aggregate functions (e.g. COUNT, SUM, AVG) support the DISTINCT keyword:
+```SQL
+SELECT COUNT(DISTINCT login) FROM student WHERE login LIKE '%@cs';
+```
+A single SELECT statement can contain multiple aggregates:
+```SQL
+SELECT AVG(gpa), COUNT(sid) FROM student WHERE login LIKE '%@cs';
+```
+
+Output of other columns outside of an aggregate is undefined (e.cid is undefined below).
+```SQL
+SELECT AVG(s.gpa), e.cid
+FROM enrolled AS e JOIN student AS s
+ON e.sid = s.sid;
+```
+The SQL:2023 standard now supports the ANY VALUE aggregation function
+```SQL
+SELECT AVG(s.gpa), ANY_VALUE(e.cid)
+FROM enrolled AS e JOIN student AS s
+ON e.sid = s.sid;
+```
+Non-aggregated values in SELECT output clause must appear in the GROUP BY clause
+```SQL
+SELECT AVG(s.gpa), e.cid
+FROM enrolled AS e JOIN student AS s
+WHERE e.sid = s.sid
+GROUP BY e.cid;
+```
+The HAVING clause filters output results based on aggregation computation. This makes HAVING behave like a WHERE clause for a GROUP BY.
+```SQL
+SELECT AVG(s.gpa) AS avg_gpa, e.cid
+FROM enrolled AS e, student AS s
+WHERE e.sid = s.sid
+GROUP BY e.cid
+HAVING avg_gpa > 3.9;
+```
+
+The above query syntax is supported by many major database systems, but is not compliant with the SQL standard. To make the query standard compliant, we must repeat use of AVG(S.GPA) in the body of the HAVING clause
+```SQL
+SELECT AVG(s.gpa), e.cid
+FROM enrolled AS e, student AS s
+WHERE e.sid = s.sid
+GROUP BY e.cid
+HAVING AVG(s.gpa) > 3.9;
+```
+
+# String Operations
+The SQL standard says that strings are case sensitive and single-quotes only. But standards are different from different systems.
+
+Pattern Matching: The LIKE keyword is used for string matching in predicates.
+- "%" matches any substrings (including empty)
+- "_" matches any one character.
+
+String Functions SQL-92 defines string functions. Many database systems implement other functions in addition to those in the standard. Examples of standard string functions include SUBSTRING(S, B, E) and UPPER(S).
+
+Concatenation: Two vertical bars (“||”) will concatenate two or more strings together into a single string.
+
+# Date and Time
+Databases generally want to keep track of dates and time, so SQL supports operations to manipulate DATE and TIME attributes. These can be used as either outputs or predicates.
+
+Specific syntax for date and time operations can vary wildly across systems.
+
+# Output Redirection
+Instead of having the result a query returned to the client (e.g., terminal), you can tell the DBMS to store the results into another table. You can then access this data in subsequent queries.
+
+- New Table: Store the output of the query into a new (permanent) table.
+```SQL
+SELECT DISTINCT cid INTO CourseIds FROM enrolled;
+```
+- Existing Table: Store the output of the query into a table that already exists in the database.
+```SQL
+INSERT INTO CourseIds (SELECT DISTINCT cid FROM enrolled);
+```
+
+# Output Control
+
+Order By:
+```SQL
+SELECT sid, grade FROM enrolled WHERE cid = '15-721'
+ORDER BY grade;
+```
+
+The default sort order is ascending (ASC). We can manually specify DESC to reverse the order:
+```SQL
+SELECT sid, grade FROM enrolled WHERE cid = '15-721'
+ORDER BY grade DESC;
+```
+
+By default, the DBMS will return all of the tuples produced by the query. We can use the LIMIT clause to restrict the number of result tuples:
+```SQL
+SELECT sid, name FROM student WHERE login LIKE '%@cs'
+LIMIT 10;
+```
+
+We can also provide an offset to return a range in the results:
+```SQL
+SELECT sid, name FROM student WHERE login LIKE '%@cs'
+LIMIT 20 OFFSET 10;
+```
+
+# Window Functions
+The conceptual execution for window functions can be imagined as such (note that not all window functions will behave like this):
+1. The table is partitioned
+2. Each partition is sorted (if there is an ORDER BY clause)
+3. For each record, it creates a window spanning multiple records
+4. Finally the output is computed for each window
+
+Functions: The window function can be any of the aggregation functions that we discussed above. There are also also special window functions:
+
+1. ROW_NUMBER: The number of the current row.
+2. RANK: The order position of the current row.
+
+Grouping: The OVER clause specifies how to group together tuples when computing the window function. Use PARTITION BY to specify group.
+
+```SQL
+SELECT cid, sid, ROW_NUMBER() OVER (PARTITION BY cid)
+FROM enrolled ORDER BY cid;
+```
+
+Example: Find the student with the second highest grade for each course
+```SQL
+SELECT * FROM (
+SELECT *, RANK() OVER (PARTITION BY cid
+ORDER BY grade ASC) AS rank
+FROM enrolled) AS ranking
+WHERE ranking.rank = 2;
+```
+
+# Nested Queries
+
+Nested Query Results Expressions:
+
+- ALL: Must satisfy expression for all rows in sub-query
+- ANY: Must satisfy expression for at least one row in sub-query.
+- IN: Equivalent to =ANY()
+- EXISTS: At least one row is returned
+
+# Lateral Joins
+The LATERAL operator allows a nested query to reference attributes in other nested queries that precede it.
+
+Example: Calculate the number of students enrolled in each course and the average GPA. Sort by enrollment count in descending order..
+
+Once we have gotten the course records, we can think of this query like below. For each course:
+- Compute the number of enrolled students in this course
+- Compute the average GPA of the enrolled students in this course
+```SQL
+SELECT * FROM course AS c
+LATERAL (SELECT COUNT(*) AS cnt FROM enrolled
+WHERE enrolled.cid = c.cid) AS t1,
+LATERAL (SELECT AVG(gpa) AS avg FROM student AS s
+JOIN enrolled AS e ON s.sid = e.sid
+WHERE e.cid = c.cid) AS t2;
+```
+
+# Common Table Expression
+Common Table Expressions (CTEs) are an alternative to windows or nested queries when writing more complex queries. They provide a way to write auxiliary statements for use in a larger query. A CTE can be thought of as a temporary table that is scoped to a single query.
+
+The WITH clause binds the output of the inner query to a temporary table with the same name.
+
+```SQL
+WITH cteName AS (
+SELECT 1
+)
+SELECT * FROM cteName;
+```
