@@ -83,3 +83,6 @@ Instead of immediately splitting a bucket when it overflows, this scheme maintai
 - When the pointer reaches the very last slot, delete the original hash function and move the pointer back to the beginning.
 
 If the highest bucket below the split pointer is empty, we can also remove the bucket and move the split pointer in the reverse direction, thereby shrinking the size of the hash table.
+
+
+
