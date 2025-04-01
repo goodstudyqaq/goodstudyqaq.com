@@ -71,7 +71,7 @@ The static hashing schemes require the DBMS to know the number of elements it wa
 ## Chained Hashing
 This is the most common dynamic hashing scheme. The DBMS maintains a linked list of buckets for each slot in the hash table. Keys that hash to the same slot are simply inserted into the linked list for that slot. To look up an element, we hash to its bucket and then scan through the linked list to find it
 
-## Extendible Hashing(Don't understand now...)
+## Extendible Hashing
 Extendible hashing is an improved variant of chained hashing that splits buckets instead of allowing chains to grow indefinitely. This approach allows multiple slot locations in the hash table to point to the same bucket chain. The core idea behind rebalancing the hash table is to move bucket entries on split and increase the number of bits examined to find entries in the hash table. This means that the DBMS only has to move data within the buckets of the split chain; all other buckets remain untouched.
 - The DBMS maintains a global and local depth bit counts. These bit counts determine the number of most significant bits we need to look at to find buckets in the slot array.
 - When a bucket is full, the DBMS splits the bucket and re-distributes its elements. If the local depth of the split bucket is less than the global depth, then the new bucket is just added to the existing slot array. Otherwise, the DBMS doubles the size of the slot array to accommodate the new bucket and increments the global depth counter
