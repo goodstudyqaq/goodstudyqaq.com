@@ -1,0 +1,144 @@
+---
+title: Query Planning & Optimization
+date: '2025-4-9'
+tags: ['Database', 'CMU-15445']
+draft: false
+summary: Concepts of database systems
+---
+# Overview
+Because SQL is declarative, the query only tells the DBMS what to compute, but not how to compute it. Thus, the DBMS needs to translate a SQL statement into an executable query plan. But there are different ways to execute each operator in a query plan (e.g., join algorithms) and there will be differences in performance among these plans. The job of the DBMS’s optimizer is to pick an optimal plan for any given query.
+
+# Types of Query Optimization
+There are two high-level strategies for query optimization
+
+1. The first approach is to use static rules, or heuristics. Heuristics match portions of the query with known patterns to assemble a plan. These rules transform the query to remove inefficiencies. Although these rules may require consultation of the catalog to understand the structure of the data, they never need to examine the data itself.
+
+2. An alternative approach is to use cost-based search to read the data and estimate the cost of executing
+equivalent plans. The cost model chooses the plan with the lowest cost.
+
+# Logical Query Optimization
+Transform a logical plan into an equivalent logical plan using pattern matching rules
+
+Some selection optimizations include:
+- Predicate Pushdown - Perform filters as early as possible
+- Reorder predicates so that the DBMS applies the most selective one first.
+- Split Conjunctive Predicates - Breakup a complex predicate and pushing it down.
+
+![](/static/images/predicate-pushdown.png)
+
+Some projection optimizations include:
+- Perform projections as early as possible to create smaller tuples and reduce intermediate results (projection pushdown)
+- Project out all attributes except the ones requested or requires.
+- Optimization from projection pushdown depends on number of columns
+
+![](/static/images/projection-pushdown.png)
+
+# Cost-Based Query Optimization
+After performing rule-based rewriting, the DBMS will enumerate different plans for the query and estimate their costs. It then chooses the best plan for the query after exhausting all plans or some timeout.
+
+# Cost Estimations
+DBMS’s use cost models to estimate the cost of executing a plan. These models evaluate equivalent plans for a query to help the DBMS select the most optimal one.
+
+The cost of a query depends on several underlying metrics split between physical and logical costs, including:
+
+- CPU: small cost, but tough to estimate
+- Disk I/O: the number of block transfers
+- Memory: the amount of DRAM used.
+- Network: the number of messages sent.
+
+Exhaustive enumeration of all valid plans for a query is much too slow for an optimizer to perform. For joins alone, which are commutative and associative, there are $4^n$ different orderings of every n-way join. Optimizers must limit their search space in order to work efficiently
+
+To approximate costs of queries, DBMS’s maintain internal statistics about tables, attributes, and indexes in their internal catalogs. Different systems maintain these statistics in different ways. Most systems attempt to avoid on-the-fly computation by maintaining an internal table of statistics. These internal tables may then be updated in the background.
+
+For each relation R, the DBMS maintains the following information:
+- $N_R$: Number of tuples in R
+- $V(A, R)$: Number of distinct values of attribute A
+
+With the information listed above, the optimizer can derive the selection cardinality SC(A, R)statistic. The selection cardinality is the average number of records with a value for an attribute A given $\frac{N_R}{V(A, R)}$ Note that this assumes data uniformity. This assumption is often incorrect, but it simplifies the optimization process
+
+## Selection Statistics
+The selection cardinality can be used to determine the number of tuples that will be selected for a given input
+
+Equality predicates on unique keys are simple to estimate (see Figure 4).
+
+![](/static/images/simple-predicate-example.png)
+
+A more complex predicate is shown in Figure 5
+
+![](/static/images/complex-predicate-example.png)
+The selectivity (sel) of a predicate P is the fraction of tuples that qualify. The formula used to compute selective depends on the type of predicate. Selectivity for complex predicates is hard to estimate accurately which can pose a problem for certain systems. An example of a selectivity computation is shown in Figure 6.
+
+Observe that the selectivity of a predicate is equivalent to the probability of that predicate. This allows probability rules to be applied in many selectivity computations. This is particularly useful when dealing with complex predicates. For example, if we assume that multiple predicates involved in a conjunction are independent, we can compute the total selectivity of the conjunction as the product of the selectivities of the individual predicates
+
+![](/static/images/selectivity-of-negation-query-example.png)
+
+## Selectivity Computation Assumptions
+
+In computing the selection cardinality of predicates, the following three assumptions are used.
+- Uniform Data: The distribution of values (except for the heavy hitters) is the same
+- Independent Predicates: The predicates on attributes are independent
+- Inclusion Principle: The domain of join keys overlap such that each key in the inner relation will also exist in the outer table.
+
+These assumptions are often not satisfied by real data. For example, correlated attributes break the assumption of independence of predicates.
+
+# Histograms
+Real data is often skewed and is tricky to make assumptions about. However, storing every single value of a data set is expensive. One way to reduce the amount of memory used by storing data in a histogram to group together values. An example of a graph with buckets is shown in Figure 7.
+
+![](/static/images/equi-width-histogram.png)
+
+Another approach is to use a equi-depth histogram that varies the width of buckets so that the total number of occurrences for each bucket is roughly the same. An example is shown in Figure 8.
+
+In place of histograms, some systems may use sketches to generate approximate statistics about a data set.
+
+![](/static/images/equi-depth-histogram.png)
+
+# Sampling
+
+DBMS’s can use sampling to apply predicates to a smaller copy of the table with a similar distribution (see Figure 9). The DBMS updates the sample whenever the amount of changes to the underlying table exceeds some threshold (e.g., 10% of the tuples).
+
+![](/static/images/sampling.png)
+
+# Single-Relation Query Plans
+For single-relation query plans, the biggest obstacle is choosing the best access method (i.e., sequential scan, binary search, index scan, etc.) Most new database systems just use heuristics, instead of a sophisticated cost model, to pick an access method.
+
+For OLTP queries, this is especially easy because they are sargable (Search Argument Able), which means that there exists a best index that can be selected for the query. This can also be implemented with simple heuristics
+
+# Multi-Relation Query Plans
+
+For Multi-Relation query plans, as number of joins increases, the number of alternative plans grow rapidly. Consequently, it is important to restrict the search space so as to be able to find the optimal plan in a reasonable amount of time. There are two ways to approach this search problem:
+- Generative / Bottom-up: Start with nothing and then build up the plan to get to the outcome that you want. Examples: IBM System R, DB2, MySQL, Postgres, most open-source DBMSs
+- Transformation / Top-down: Start with the outcome that you want, and then work down the tree to find the optimal plan that gets you to that goal. Examples: MSSQL, Greenplum, CockroachDB, Volcano
+
+# Bottom-up optimization example - System R
+Use static rules to perform initial optimization. Then use dynamic programming to determine the best join order for tables using a divide-and conquer search method. Most open source database systems do this.
+- Break query up into blocks and generate the logical operators for each block
+- For each logical operator, generate a set of physical operators that implement it
+- Then, iteratively construct a ”left-deep” tree that minimizes the estimated amount of work to execute the plan
+
+# Top-down optimization example - Volcano
+Start with a logical plan of what we want the query to be. Perform a branch-and-bound search to traverse the plan tree by converting logical operators into physical operators. Invoke rules to create new nodes and traverse tree
+- Keep track of global best plan during search.
+- Treat physical properties of data as first-class entities during planning.
+
+# Nested Sub-Queries
+The DBMS treats nested sub-queries in the where clause as functions that take parameters and return a single value or set of values.
+- Re-write the query by de-correlating and / or flattening nested subqueries. An example of this is shown in Figure 10
+- Decompose the nested query and store the result to a temporary table. An example of this is shown in Figure 11
+
+![](/static/images/Subquery-optimization-rewriting.png)
+
+![](/static/images/Subquery-optimization-decomposition.png)
+
+# Expression Rewriting
+An optimizer transforms a query’s expression ( e.g. WHERE/ON clause predicates) into a minimal set of expressions.
+- Search for expressions that match a pattern
+- When a match is found, rewrite the expression
+- Halt if there are no more rules that match.
+
+Some examples of expression rewriting
+- Impossible predicates as shown in Figure 12.
+- Merging predicate as shown in Figure 13
+
+![](/static/images/Impossible-predicates.png)
+
+![](/static/images/merging-predicates.png)
