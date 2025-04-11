@@ -1,0 +1,84 @@
+---
+title: Concurrency Control Theory
+date: '2025-4-11'
+tags: ['Database', 'CMU-15445']
+draft: false
+summary: Concepts of database systems
+---
+
+# Transactions
+A transaction is the execution of a sequence of one or more operations (e.g., SQL queries) on a shared database to perform some higher level function. They are the basic unit of change in a DBMS. Partial transactions are not allowed (i.e. transactions must be atomic).
+
+## The Strawman System
+A simple system for handling transactions is to execute one transaction at a time using a single worker (e.g. one thread). Thus, only one transaction can be running at a time. To execute the transaction, the DBMS copies the entire database file and makes the transaction changes to this new file. If the transaction succeeds, then the new file becomes the current database file. If the transaction fails, the DBMS discards the new file and none of the transaction’s changes have been saved. This method is slow as it does not allow for concurrent transactions and requires copying the whole database file for every transaction
+
+A (potentially) better approach is to allow concurrent execution of independent transactions while also maintaining correctness and fairness (as in all transactions are treated with equal priority and don’t get ”starved” by never being executed). But executing concurrent transactions in a DBMS is challenging. It is difficult to ensure correctness (for example, if Andy only has $100 and tries to pay off two promoters at once, who should get paid?) while also executing transactions quickly (our strawman example guarantees sequential correctness, but at the cost of parallelism).
+
+Arbitrary interleaving of operations can lead to:
+- Temporary Inconsistency: Unavoidable, but not an issue.
+- Permanent Inconsistency: Unacceptable, cause problems with correctness and integrity of data.
+
+The scope of a transaction is only inside the database. It cannot make changes to the outside world because it cannot roll those back. For example, if a transaction causes an email to be sent, this cannot be rolled back by the DBMS if the transaction is aborted.
+
+# Definitions
+The criteria used to ensure the correctness of a database is given by the acronym ACID:
+- Atomicity: Atomicity ensures that either all actions in the transaction happen, or none happen
+- Consistency: If each transaction is consistent and the database is consistent at the beginning of the transaction, then the database is guaranteed to be consistent when the transaction completes. Data is consistent if it satisfies all validation rules such as constraints, cascades and triggers.
+- Isolation: Isolation means that when a transaction executes, it should have the illusion that it is isolated from other transactions. Isolation ensures that concurrent execution of transactions should have the same resulting database state as a sequential execution of the transactions.
+- Durability: If a transaction commits, then its effects on the database should persist.
+
+# ACID: Atomicity
+The DBMS guarantees that transactions are atomic. The transaction either executes all its actions or none of them. There are two approaches to this:
+
+## Approach #1: Logging
+DBMS logs all actions so that it can undo the actions in case of an aborted transaction. It maintains undo records both in memory and on disk. Logging is used by almost all modern systems for audit and efficiency reasons
+
+## Approach #2: Shadow Paging
+The DBMS makes copies of pages modified by the transactions and transactions make changes to those copies. Only when the transaction commits is the page made visible. This approach is typically slower at runtime than a logging-based DBMS. However, one benefit is, if you are only single threaded, there is no need for logging, so there are less writes to disk when transactions modify the database. This also makes recovery simple, as all you need to do is delete all pages from uncommitted transactions. In general, though, better runtime performance is preferred over better recovery performance, so this is rarely used in practice
+
+
+# ACID: Consistency
+At a high level, consistency means the “world” represented by the database is logically correct. All questions (i.e., queries) that the application asks about the data will return logically correct results. There are two notions of consistency
+
+Database Consistency: The database accurately represents the real world entity it is modeling and follows integrity constraints. (E.g. The age of a person cannot not be negative). Additionally, transactions in the future should see the effects of transactions committed in the past inside of the database
+
+Transaction Consistency: If the database is consistent before the transaction starts, it will also be consistent after. Ensuring transaction consistency is the application’s responsibility
+
+# ACID: Isolation
+The DBMS provides transactions the illusion that they are running alone in the system. They do not see the effects of concurrent transactions. This is equivalent to a system where transactions are executed in serial order (i.e., one at a time). But to achieve better performance, the DBMS has to interleave the operations of concurrent transactions while maintaining the illusion of isolation.
+
+## Concurrency Control
+A concurrency control protocol is how the DBMS decides the proper interleaving of operations from multiple transactions at runtime
+
+There are two categories of concurrency control protocols:
+- Pessimistic: The DBMS assumes that transactions will conflict, so it doesn’t let problems arise in the first place.
+- Optimistic: The DBMS assumes that conflicts between transactions are rare, so it chooses to deal with conflicts when they happen after the transactions commit.
+
+The order in which the DBMS executes operations is called an execution schedule. We want to interleave transactions to maximize concurrency while ensuring that the output is “correct”. The goal of a concurrency control protocol is to generate an execution schedule that is is equivalent to some serial execution:
+- Serial Schedule: Schedule that does not interleave the actions of different transactions.
+- Equivalent Schedules: For any database state, if the effect of execution the first schedule is identical to the effect of executing the second schedule, the two schedules are equivalent.
+- Serializable Schedule: A serializable schedule is a schedule that is equivalent to any serial execution of the transactions. Different serial executions can produce different results, but all are considered “correct”.
+
+Aconflict between two operations occurs if the operations are for different transactions, they are performed on the same object, and at least one of the operations is a write. There are three variations of conflicts:
+- Read-Write Conflicts (“Unrepeatable Reads”): A transaction is not able to get the same value when reading the same object multiple times
+- Write-Read Conflicts (“Dirty Reads”): A transaction sees the write effects of a different transaction before that transaction committed its changes.
+- Write-Write conflict (“Lost Updates”): One transaction overwrites the uncommitted data of another concurrent transaction
+
+There are two types for serializability: (1) conflict and (2) view. Neither definition allows all schedules that one would consider serializable. In practice, DBMSs support conflict serializability because it can be enforced efficiently.
+
+## Conflict Serializability
+Two schedules are conflict equivalent iff they involve the same operations of the same transactions and every pair of conflicting operations is ordered in the same way in both schedules. A schedule S is conflict serializable if it is conflict equivalent to some serial schedule.
+
+One can verify that a schedule is conflict serializable by swapping non-conflicting operations until a serial schedule is formed. For schedules with many transactions, this becomes too expensive. A better way to verify schedules is to use a dependency graph (precedence graph).
+
+In a dependency graph, each transaction is a node in the graph. There exists a directed edge from node $T_i$ to $T_j$ if an operation $O_i$ from $T_i$ conflicts  with an operation $O_j$ fromm $T_i$ and $O_i$ occurs before $O_j$ in the schedule. Then, a schedule is conflict serializable iff the dependency graph is acyclic.
+
+## Universe of Schedules
+$$
+\text { SerialSchedules } \subset \text { ConflictSerializableSchedules } \subset \text { ViewSerializableSchedules } \subset \text { AllSchedules }
+$$
+
+# ACID: Durability
+All of the changes of committed transactions must be durable (i.e., persistent) after a crash or restart. The DBMS can either use logging or shadow paging to ensure that all changes are durable. This usually requires that committed transactions are stored in non-volatile memory.
+
+
